@@ -389,58 +389,57 @@ const HTML = `<!DOCTYPE html>
   .pill.arch.active { background: #8957e51a; border-color: #8957e5; color: #d2a8ff; }
   #count { font-size: 12px; color: #484f58; margin-left: auto; }
 
-  /* ── List ── */
-  #list { border-top: 1px solid #21262d; }
+  /* ── Grid ── */
+  #list { padding: 12px 24px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
 
-  .grp { padding: 6px 24px 4px; display: flex; align-items: center; gap: 10px; background: #0d1117; border-bottom: 1px solid #21262d; }
+  .grp { grid-column: 1 / -1; padding: 6px 0 4px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #21262d; margin-top: 8px; }
+  .grp:first-child { margin-top: 0; }
   .grp-label { font-size: 11px; font-weight: 600; color: #484f58; text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; }
   .grp-path { font-size: 11px; color: #30363d; font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .row { display: flex; align-items: flex-start; gap: 16px; padding: 13px 24px; border-bottom: 1px solid #21262d; cursor: default; transition: background .1s; position: relative; }
-  .row:hover { background: #161b22; }
-  .row.pinned { border-left: 2px solid #388bfd; padding-left: 22px; }
+  /* ── Card ── */
+  .row { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 11px 12px; display: flex; flex-direction: column; gap: 5px; cursor: default; transition: border-color .15s; position: relative; }
+  .row:hover { border-color: #30363d; }
+  .row.pinned { border-left: 2px solid #388bfd; }
   .row.archived { opacity: .55; }
+  .row-gutter { display: none; }
 
-  /* left gutter: pin indicator */
-  .row-gutter { width: 8px; flex-shrink: 0; padding-top: 4px; }
-  .pin-mark { width: 6px; height: 6px; border-radius: 50%; background: #388bfd; }
-
-  /* main content */
-  .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-
-  .row-title { font-size: 15px; font-weight: 500; color: #e6edf3; line-height: 1.4; cursor: text; word-break: break-word; }
+  .card-head { display: flex; align-items: flex-start; gap: 4px; }
+  .row-body { flex: 1; min-width: 0; }
+  .row-title { font-size: 13px; font-weight: 500; color: #e6edf3; line-height: 1.4; cursor: text; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
   .row-title:empty::before { content: attr(data-placeholder); color: #484f58; font-weight: 400; font-style: italic; }
-  .row-title[contenteditable="true"] { outline: none; border-bottom: 1px solid #388bfd; }
+  .row-title[contenteditable="true"] { outline: none; -webkit-line-clamp: unset; overflow: visible; border-bottom: 1px solid #388bfd; }
 
-  .row-meta { font-size: 12px; color: #6e7681; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row-meta .branch { color: #3fb950; }
-
-  .row-desc { font-size: 13px; color: #8b949e; font-style: italic; cursor: text; line-height: 1.4; }
-  .row-desc:empty::before { content: attr(data-placeholder); color: #30363d; font-style: italic; }
-  .row-desc[contenteditable="true"] { outline: none; border-bottom: 1px dashed #388bfd88; }
-
-  .row-preview { font-size: 13px; color: #6e7681; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; border-left: 2px solid #21262d; padding-left: 10px; }
-
-  .row-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-  .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #21262d; color: #8b949e; cursor: pointer; border: none; }
-  .tag:hover { background: #30363d; color: #c9d1d9; }
-  .tag-add { background: transparent; border: 1px dashed #30363d !important; color: #484f58; }
-  .tag-add:hover { border-color: #8b949e !important; color: #8b949e; }
-
-  /* right side: actions */
-  .row-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px; }
-  .row-icons { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+  .row-icons { display: flex; gap: 0; opacity: 0; transition: opacity .15s; flex-shrink: 0; }
   .row:hover .row-icons { opacity: 1; }
-  .icon-btn { background: transparent; border: none; color: #484f58; cursor: pointer; padding: 5px 8px; border-radius: 6px; font-size: 18px; line-height: 1; }
+  .icon-btn { background: transparent; border: none; color: #484f58; cursor: pointer; padding: 3px 5px; border-radius: 4px; font-size: 15px; line-height: 1; }
   .icon-btn:hover { background: #21262d; color: #c9d1d9; }
   .icon-btn.on { color: #388bfd; }
   .icon-btn.del:hover { background: #da363322; color: #f85149; }
 
-  .resume-btn { padding: 6px 14px; border-radius: 6px; background: #238636; border: 1px solid #2ea043; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .row-meta { font-size: 11px; color: #6e7681; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-meta .branch { color: #3fb950; }
+
+  .row-desc { font-size: 12px; color: #8b949e; font-style: italic; cursor: text; line-height: 1.4; }
+  .row-desc:empty { display: none; }
+  .row-desc[contenteditable="true"] { display: block; outline: none; border-bottom: 1px dashed #388bfd88; }
+
+  .row-preview { display: none; }
+
+  .row-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+  .tag { font-size: 10px; padding: 1px 7px; border-radius: 8px; background: #21262d; color: #8b949e; cursor: pointer; border: none; }
+  .tag:hover { background: #30363d; color: #c9d1d9; }
+  .tag-add { background: transparent; border: 1px dashed #30363d !important; color: #484f58; }
+  .tag-add:hover { border-color: #8b949e !important; color: #8b949e; }
+
+  .card-foot { display: flex; gap: 6px; margin-top: 4px; }
+  .row-actions { display: none; }
+
+  .resume-btn { flex: 1; padding: 5px 0; border-radius: 5px; background: #238636; border: 1px solid #2ea043; color: #fff; font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; }
   .resume-btn:hover { background: #2ea043; }
   .resume-btn:active { background: #1a7f2e; }
   .resume-btn.loading { opacity: .6; cursor: wait; }
-  .copy-btn { padding: 6px 10px; border-radius: 6px; background: transparent; border: 1px solid #30363d; color: #8b949e; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .copy-btn { padding: 5px 10px; border-radius: 5px; background: transparent; border: 1px solid #30363d; color: #8b949e; font-size: 12px; cursor: pointer; white-space: nowrap; }
   .copy-btn:hover { border-color: #8b949e; color: #e6edf3; }
 
   /* ── Misc ── */
@@ -598,28 +597,24 @@ function render() {
 
 function rowHtml(s) {
   const liveDot = s.activePty ? '<span class="live-dot" title="Session is running"></span>' : ''
-  const title = s.title || s.firstMessage || 'Untitled session'
   const meta = [shortPath(s.cwd || s.project), s.gitBranch ? '<span class="branch">' + esc(s.gitBranch) + '</span>' : '', timeAgo(s.lastModified), s.messageCount + ' msgs'].filter(Boolean).join(' &middot; ')
   const tags = (s.tags||[]).map(t => '<button class="tag" data-tag="' + esc(t) + '">' + esc(t) + ' ×</button>').join('')
-  const hasPreview = s.lastMessage && s.lastMessage !== s.firstMessage
 
   let r = '<div class="row' + (s.pinned ? ' pinned' : '') + (s.archived ? ' archived' : '') + '" data-id="' + esc(s.id) + '">'
-  r += '<div class="row-gutter">' + (s.pinned ? '<div class="pin-mark"></div>' : '') + '</div>'
-  r += '<div class="row-body">'
-  r += '  <div class="row-title" data-field="title" contenteditable="false" data-placeholder="Click to add title...">' + liveDot + esc(s.title || '') + '</div>'
-  r += '  <div class="row-meta">' + meta + '</div>'
-  r += '  <div class="row-desc" data-field="description" contenteditable="false" data-placeholder="Add a note...">' + esc(s.description || '') + '</div>'
-  if (hasPreview) r += '  <div class="row-preview">' + esc(s.lastMessage.slice(0, 220)) + '</div>'
-  if (s.tags && s.tags.length) r += '  <div class="row-tags">' + tags + '</div>'
-  r += '  <div class="row-tags" style="margin-top:2px"><button class="tag tag-add" data-action="add-tag">+ tag</button></div>'
-  r += '</div>'
-  r += '<div class="row-actions">'
+  r += '<div class="card-head">'
+  r += '  <div class="row-body"><div class="row-title" data-field="title" contenteditable="false" data-placeholder="Untitled...">' + liveDot + esc(s.title || '') + '</div></div>'
   r += '  <div class="row-icons">'
   r += '    <button class="icon-btn ' + (s.pinned ? 'on' : '') + '" data-action="pin" title="' + (s.pinned ? 'Unpin' : 'Pin') + '">⊙</button>'
   r += '    <button class="icon-btn" data-action="archive" title="' + (s.archived ? 'Unarchive' : 'Archive') + '">⊟</button>'
   r += '    <button class="icon-btn del" data-action="delete" title="Remove">⊗</button>'
   r += '  </div>'
-  r += '  <button class="copy-btn" data-action="copy" title="Copy &#39;claude --resume&#39; command to clipboard">Copy</button>'
+  r += '</div>'
+  r += '<div class="row-meta">' + meta + '</div>'
+  if (s.description) r += '<div class="row-desc" data-field="description" contenteditable="false">' + esc(s.description) + '</div>'
+  if (s.tags && s.tags.length) r += '<div class="row-tags">' + tags + '<button class="tag tag-add" data-action="add-tag">+ tag</button></div>'
+  else r += '<div class="row-tags"><button class="tag tag-add" data-action="add-tag">+ tag</button></div>'
+  r += '<div class="card-foot">'
+  r += '  <button class="copy-btn" data-action="copy" title="Copy claude --resume command">Copy</button>'
   r += '  <button class="resume-btn" data-action="resume">Resume</button>'
   r += '</div>'
   r += '</div>'
