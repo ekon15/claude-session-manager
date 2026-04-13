@@ -184,7 +184,8 @@ async function readSessions(): Promise<Session[]> {
               return
             }
 
-            if (!firstMessage) return
+            // Exclude only truly empty sessions (no cwd = no real content)
+            if (!firstMessage && !cwd) return
 
             const m = meta.sessions[sessionId] ?? {}
             sessions.push({
