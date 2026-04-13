@@ -712,8 +712,8 @@ async function doResume(id, btn) {
   openTerminal(s.id, s.cwd, s.title || s.firstMessage || '')
 }
 async function doPin(id) {
-  const { pinned } = await api('POST', '/api/pin/' + id)
-  patchLocal(id, { pinned }); render()
+  await api('POST', '/api/pin/' + id)
+  await refreshSessions()
 }
 async function doArchive(id) {
   const { archived } = await api('POST', '/api/archive/' + id)
