@@ -556,6 +556,9 @@ function filtered() {
       return hay.includes(q)
     }
     return true
+  }).sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return b.lastModified - a.lastModified
   })
 }
 
