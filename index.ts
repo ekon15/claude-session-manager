@@ -432,10 +432,10 @@ const HTML = `<!DOCTYPE html>
   .tag-add { background: transparent; border: 1px dashed #30363d !important; color: #484f58; }
   .tag-add:hover { border-color: #8b949e !important; color: #8b949e; }
 
-  .card-foot { display: flex; gap: 6px; margin-top: 4px; }
+  .card-foot { display: flex; gap: 6px; margin-top: 4px; justify-content: flex-end; }
   .row-actions { display: none; }
 
-  .resume-btn { flex: 1; padding: 5px 0; border-radius: 5px; background: #238636; border: 1px solid #2ea043; color: #fff; font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; }
+  .resume-btn { padding: 5px 14px; border-radius: 5px; background: #238636; border: 1px solid #2ea043; color: #fff; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
   .resume-btn:hover { background: #2ea043; }
   .resume-btn:active { background: #1a7f2e; }
   .resume-btn.loading { opacity: .6; cursor: wait; }
@@ -571,26 +571,15 @@ function render() {
   }
 
   let html = ''
-  let lastCwd = null
   const hasPinned = list.some(s => s.pinned)
 
-  // pinned group header
   if (hasPinned) {
     html += '<div class="grp"><span class="grp-label">Pinned</span></div>'
     for (const s of list.filter(s => s.pinned)) html += rowHtml(s)
-    html += '<div class="grp"><span class="grp-label">Recent</span></div>'
+    if (list.some(s => !s.pinned)) html += '<div class="grp"><span class="grp-label">Recent</span></div>'
   }
 
-  // non-pinned, grouped by cwd
-  for (const s of list.filter(s => !s.pinned)) {
-    if (s.cwd !== lastCwd) {
-      if (!hasPinned) {
-        html += '<div class="grp"><span class="grp-label">Project</span><span class="grp-path">' + esc(shortPath(s.cwd || s.project)) + '</span></div>'
-      }
-      lastCwd = s.cwd
-    }
-    html += rowHtml(s)
-  }
+  for (const s of list.filter(s => !s.pinned)) html += rowHtml(s)
 
   container.innerHTML = html
 }
