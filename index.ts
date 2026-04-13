@@ -121,6 +121,61 @@ function extractText(content: unknown): string {
   return ''
 }
 
+async function readOneSession(
+  project: string, file: string, projectPath: string,
+  meta: MetaStore
+): Promise<Session | null> {
+  const sessionId = basename(file, '.jsonl')
+  const filePath = join(projectPath, file)
+  const fStat = await stat(filePath).catch(() => null)
+  if (!fStat) return null
+  if (meta.sessions[sessionId]?.deletedAt) return null
+
+  let firstMessage = ''
+  let lastMessage = ''
+  let messageCount = 0
+  let cwd = ''
+  let gitBranch = ''
+  let lastTimestampMs = 0
+
+  try {
+    const lines = (await readFile(filePath, 'utf-8')).split('\n').filter((l) => l.trim())
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line)
+        if (obj.cwd && !cwd) cwd = obj.cwd
+        if (obj.gitBranch && !gitBranch) gitBranch = obj.gitBranch
+        if (obj.timestamp) {
+          const ts = new Date(obj.timestamp).getTime()
+          if (ts > lastTimestampMs) lastTimestampMs = ts
+        }
+        if (obj.type === 'user' || obj.type === 'assistant') messageCount++
+        if (obj.type === 'user' && !obj.isSidechain) {
+          const text = extractText(obj.message?.content).slice(0, 300)
+          if (text) { if (!firstMessage) firstMessage = text; lastMessage = text }
+        }
+        if (obj.type === 'assistant' && !obj.isSidechain) {
+          const text = extractText(obj.message?.content).slice(0, 200)
+          if (text) lastMessage = text
+        }
+      } catch {}
+    }
+  } catch {
+    return null
+  }
+
+  if (!firstMessage && !cwd) return null
+
+  const m = meta.sessions[sessionId] ?? {}
+  return {
+    id: sessionId, project, cwd, firstMessage, lastMessage,
+    lastModified: lastTimestampMs || fStat.mtimeMs,
+    messageCount, gitBranch,
+    title: m.title, description: m.description, tags: m.tags,
+    pinned: m.pinned, archived: m.archived,
+  }
+}
+
 async function readSessions(): Promise<Session[]> {
   const projectsDir = join(homedir(), '.claude', 'projects')
   const [meta, projects] = await Promise.all([
@@ -128,88 +183,23 @@ async function readSessions(): Promise<Session[]> {
     readdir(projectsDir).catch(() => [] as string[]),
   ])
 
-  const sessions: Session[] = []
+  // Collect all per-file promises up front, then await all at once
+  const filePromises: Promise<Session | null>[] = []
+  for (const project of projects) {
+    const projectPath = join(projectsDir, project)
+    const pStat = await stat(projectPath).catch(() => null)
+    if (!pStat?.isDirectory()) continue
+    const files = await readdir(projectPath).catch(() => [] as string[])
+    for (const file of files.filter((f) => f.endsWith('.jsonl'))) {
+      filePromises.push(readOneSession(project, file, projectPath, meta))
+    }
+  }
 
-  await Promise.all(
-    projects.map(async (project) => {
-      const projectPath = join(projectsDir, project)
-      const pStat = await stat(projectPath).catch(() => null)
-      if (!pStat?.isDirectory()) return
-
-      const files = await readdir(projectPath).catch(() => [] as string[])
-
-      await Promise.all(
-        files
-          .filter((f) => f.endsWith('.jsonl'))
-          .map(async (file) => {
-            const sessionId = basename(file, '.jsonl')
-            const filePath = join(projectPath, file)
-            const fStat = await stat(filePath).catch(() => null)
-            if (!fStat) return
-
-            // Skip soft-deleted sessions
-            if (meta.sessions[sessionId]?.deletedAt) return
-
-            let firstMessage = ''
-            let lastMessage = ''
-            let messageCount = 0
-            let cwd = ''
-            let gitBranch = ''
-
-            try {
-              const lines = (await readFile(filePath, 'utf-8'))
-                .split('\n')
-                .filter((l) => l.trim())
-
-              for (const line of lines) {
-                try {
-                  const obj = JSON.parse(line)
-                  if (obj.cwd && !cwd) cwd = obj.cwd
-                  if (obj.gitBranch && !gitBranch) gitBranch = obj.gitBranch
-                  if (obj.type === 'user' || obj.type === 'assistant') messageCount++
-                  if (obj.type === 'user' && !obj.isSidechain) {
-                    const text = extractText(obj.message?.content).slice(0, 300)
-                    if (text) {
-                      if (!firstMessage) firstMessage = text
-                      lastMessage = text
-                    }
-                  }
-                  if (obj.type === 'assistant' && !obj.isSidechain) {
-                    const text = extractText(obj.message?.content).slice(0, 200)
-                    if (text) lastMessage = text
-                  }
-                } catch {}
-              }
-            } catch {
-              return
-            }
-
-            // Exclude only truly empty sessions (no cwd = no real content)
-            if (!firstMessage && !cwd) return
-
-            const m = meta.sessions[sessionId] ?? {}
-            sessions.push({
-              id: sessionId,
-              project,
-              cwd,
-              firstMessage,
-              lastMessage,
-              lastModified: fStat.mtimeMs,
-              messageCount,
-              gitBranch,
-              title: m.title,
-              description: m.description,
-              tags: m.tags,
-              pinned: m.pinned,
-              archived: m.archived,
-            })
-          })
-      )
-    })
-  )
+  const results = await Promise.all(filePromises)
+  const sessions = results.filter((s): s is Session => s !== null)
 
   return sessions.sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
     return b.lastModified - a.lastModified
   })
 }
@@ -281,6 +271,11 @@ const server = createServer(async (req, res) => {
       for (const s of sessions) {
         if (activePtys.has(s.id)) (s as any).activePty = true
       }
+      // Re-sort after activePty annotations to guarantee stable order
+      sessions.sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
+        return b.lastModified - a.lastModified
+      })
       return json(res, 200, sessions)
     }
 
@@ -558,7 +553,7 @@ function filtered() {
     }
     return true
   }).sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
     return b.lastModified - a.lastModified
   })
 }
