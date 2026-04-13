@@ -619,7 +619,7 @@ function rowHtml(s) {
   r += '    <button class="icon-btn" data-action="archive" title="' + (s.archived ? 'Unarchive' : 'Archive') + '">⊟</button>'
   r += '    <button class="icon-btn del" data-action="delete" title="Remove">⊗</button>'
   r += '  </div>'
-  r += '  <button class="copy-btn" data-action="copy" title="Copy \'claude --resume\' command to clipboard">Copy</button>'
+  r += '  <button class="copy-btn" data-action="copy" title="Copy &#39;claude --resume&#39; command to clipboard">Copy</button>'
   r += '  <button class="resume-btn" data-action="resume">Resume</button>'
   r += '</div>'
   r += '</div>'
