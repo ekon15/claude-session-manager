@@ -417,8 +417,8 @@ const HTML = `<!DOCTYPE html>
   .row-meta .branch { color: #3fb950; }
 
   .row-desc { font-size: 12px; color: #8b949e; font-style: italic; cursor: text; line-height: 1.4; }
-  .row-desc:empty { display: none; }
-  .row-desc[contenteditable="true"] { display: block; outline: none; border-bottom: 1px dashed #388bfd88; }
+  .row-desc:empty::before { content: attr(data-placeholder); color: #30363d; font-style: italic; }
+  .row-desc[contenteditable="true"] { outline: none; border-bottom: 1px dashed #388bfd88; }
 
   .row-preview { display: none; }
 
@@ -598,7 +598,7 @@ function rowHtml(s) {
   r += '  </div>'
   r += '</div>'
   r += '<div class="row-meta">' + meta + '</div>'
-  if (s.description) r += '<div class="row-desc" data-field="description" contenteditable="false">' + esc(s.description) + '</div>'
+  r += '<div class="row-desc" data-field="description" contenteditable="false" data-placeholder="Add a note...">' + esc(s.description || '') + '</div>'
   if (s.tags && s.tags.length) r += '<div class="row-tags">' + tags + '<button class="tag tag-add" data-action="add-tag">+ tag</button></div>'
   else r += '<div class="row-tags"><button class="tag tag-add" data-action="add-tag">+ tag</button></div>'
   r += '<div class="card-foot">'
@@ -770,9 +770,8 @@ async function openPlayground() {
 }
 
 // ── new session ────────────────────────────────────────────────────────────
-async function newSession() {
-  await api('POST', '/api/new', {})
-  showToast('Opened new session')
+function newSession() {
+  openTerminal(null, '${process.cwd()}', 'New session')
 }
 
 // ── load ───────────────────────────────────────────────────────────────────
