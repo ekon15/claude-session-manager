@@ -1,0 +1,24 @@
+{
+  "name": "claude-session-manager",
+  "version": "1.0.0",
+  "description": "Local web UI for browsing, resuming, and managing Claude Code sessions",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "postinstall": "find node_modules/node-pty/prebuilds -name spawn-helper -exec chmod +x {} \\; 2>/dev/null || true"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.1",
+    "node-pty": "^1.1.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
