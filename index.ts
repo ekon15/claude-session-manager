@@ -224,78 +224,6 @@ async function getFirstCwd(filePath: string): Promise<string> {
   return ''
 }
 
-async function summarizeSession(sessionId: string): Promise<string> {
-  const projectsDir = join(homedir(), '.claude', 'projects')
-  const projects = await readdir(projectsDir)
-
-  // Find the session JSONL
-  let filePath = ''
-  for (const project of projects) {
-    const candidate = join(projectsDir, project, sessionId + '.jsonl')
-    if (await stat(candidate).catch(() => null)) { filePath = candidate; break }
-  }
-  if (!filePath) throw new Error('Session file not found')
-
-  // Extract first 6 user messages for context
-  const messages: string[] = []
-  for (const line of (await readFile(filePath, 'utf-8')).split('\n')) {
-    try {
-      const obj = JSON.parse(line)
-      if (obj.type === 'user' && !obj.isSidechain) {
-        const text = extractText(obj.message?.content)
-        if (text) { messages.push(text.slice(0, 400)); if (messages.length >= 6) break }
-      }
-    } catch {}
-  }
-  if (!messages.length) throw new Error('No messages found')
-
-  const prompt =
-    'Summarize what this Claude Code session was working on in 8 words or fewer. ' +
-    'Reply with only the summary phrase — no quotes, no period.\n\n' +
-    messages.join('\n\n')
-
-  const apiKey = process.env.ANTHROPIC_API_KEY
-
-  if (apiKey) {
-    // Fast path: direct API call, no subprocess, no ghost sessions
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 30,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    const data = await res.json() as { content: Array<{ text: string }> }
-    return data.content[0].text.trim().replace(/^["']|["']$/g, '')
-  }
-
-  // Fallback: use the claude CLI, then immediately clean up the ghost session it creates
-  const startedAt = Date.now()
-  const { stdout } = await execAsync(`claude -p ${JSON.stringify(prompt)}`, { timeout: 30_000 })
-
-  // Auto-delete the ghost session created by claude -p
-  for (const project of projects) {
-    const files = await readdir(join(projectsDir, project)).catch(() => [] as string[])
-    for (const file of files.filter(f => f.endsWith('.jsonl'))) {
-      const fp = join(projectsDir, project, file)
-      const s = await stat(fp).catch(() => null)
-      if (!s || s.mtimeMs <= startedAt) continue
-      const cwd = await getFirstCwd(fp)
-      if (cwd === process.cwd()) {
-        await updateSessionMeta(basename(file, '.jsonl'), { deletedAt: new Date().toISOString() })
-      }
-    }
-  }
-
-  return stdout.trim().replace(/^["']|["']$/g, '')
-}
 
 function runInTerminal(cmd: string, title?: string) {
   const nameStmt = title ? `\n      set name to ${JSON.stringify(title)}` : ''
@@ -401,13 +329,6 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true })
     }
 
-    // POST /api/summarize/:id  — generate a title with claude -p, save it
-    if (parts[0] === 'api' && parts[1] === 'summarize' && parts[2] && req.method === 'POST') {
-      const id = parts[2]
-      const summary = await summarizeSession(id)
-      await updateSessionMeta(id, { title: summary })
-      return json(res, 200, { title: summary })
-    }
 
     // POST /api/playground — returns startedAt + cwd so client can open embedded terminal
     if (url.pathname === '/api/playground' && req.method === 'POST') {
@@ -521,9 +442,6 @@ const HTML = `<!DOCTYPE html>
   .resume-btn.loading { opacity: .6; cursor: wait; }
   .copy-btn { padding: 6px 10px; border-radius: 6px; background: transparent; border: 1px solid #30363d; color: #8b949e; font-size: 13px; cursor: pointer; white-space: nowrap; }
   .copy-btn:hover { border-color: #8b949e; color: #e6edf3; }
-  .summarize-btn { padding: 6px 10px; border-radius: 6px; background: transparent; border: 1px solid #30363d; color: #8b949e; font-size: 13px; cursor: pointer; white-space: nowrap; }
-  .summarize-btn:hover { border-color: #8957e5; color: #d2a8ff; }
-  .summarize-btn.loading { opacity: .6; cursor: wait; }
 
   /* ── Misc ── */
   .empty { padding: 64px 24px; text-align: center; color: #484f58; font-size: 14px; }
@@ -701,7 +619,6 @@ function rowHtml(s) {
   r += '    <button class="icon-btn" data-action="archive" title="' + (s.archived ? 'Unarchive' : 'Archive') + '">⊟</button>'
   r += '    <button class="icon-btn del" data-action="delete" title="Remove">⊗</button>'
   r += '  </div>'
-  r += '  <button class="summarize-btn" data-action="summarize" title="Auto-generate title with Claude">✦ Title</button>'
   r += '  <button class="copy-btn" data-action="copy">Copy</button>'
   r += '  <button class="resume-btn" data-action="resume">Resume</button>'
   r += '</div>'
@@ -713,19 +630,6 @@ function rowHtml(s) {
 function sessionById(id) { return allSessions.find(s => s.id === id) }
 function patchLocal(id, patch) { const s = sessionById(id); if (s) Object.assign(s, patch) }
 
-async function doSummarize(id, btn) {
-  btn.classList.add('loading'); btn.textContent = '...'
-  try {
-    const { title, error } = await api('POST', '/api/summarize/' + id)
-    if (error) { showToast('Error: ' + error, '#da3633'); return }
-    patchLocal(id, { title })
-    // update the title element in-place without full re-render
-    const titleEl = document.querySelector('[data-id="' + id + '"] [data-field="title"]')
-    if (titleEl) titleEl.textContent = title
-    showToast('Title updated')
-  } catch { showToast('Failed', '#da3633') }
-  finally { btn.classList.remove('loading'); btn.textContent = '✦ Title' }
-}
 
 let _term = null, _termWs = null, _termFit = null, _termResize = null
 
@@ -863,7 +767,6 @@ document.getElementById('list').addEventListener('click', async e => {
     e.preventDefault()
     const a = btn.dataset.action
     if (a === 'resume') return doResume(id, btn)
-    if (a === 'summarize') return doSummarize(id, btn)
     if (a === 'copy') return doCopy(id)
     if (a === 'pin') return doPin(id)
     if (a === 'archive') return doArchive(id)
