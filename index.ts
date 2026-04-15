@@ -677,6 +677,7 @@ function closeTerminal() {
   if (_term) { _term.dispose(); _term = null }
   _termFit = null
   document.getElementById('term-overlay').classList.remove('open')
+  window.scrollTo({ top: 0, behavior: 'smooth' })
   // Refresh now (clears live dot) and again shortly after (picks up playground tag)
   refreshSessions()
   setTimeout(refreshSessions, 1500)
@@ -785,7 +786,11 @@ async function refreshSessions() {
 }
 
 refreshSessions()
-setInterval(refreshSessions, 30000)
+setInterval(() => {
+  const a = document.activeElement
+  const editing = a && (a.getAttribute('contenteditable') === 'true' || a.tagName === 'INPUT')
+  if (!editing) refreshSessions()
+}, 30000)
 </script>
 </body>
 </html>`
