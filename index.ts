@@ -6,6 +6,7 @@
 
 import { createServer } from 'http'
 import { readdir, readFile, stat, writeFile, mkdir } from 'fs/promises'
+import { watch } from 'fs'
 import { join, basename } from 'path'
 import { homedir, tmpdir } from 'os'
 import { execSync, exec } from 'child_process'
@@ -35,6 +36,7 @@ interface SessionMeta {
   pinned?: boolean
   archived?: boolean
   deletedAt?: string
+  agent?: string
 }
 
 interface MetaStore {
@@ -56,6 +58,7 @@ interface Session {
   tags?: string[]
   pinned?: boolean
   archived?: boolean
+  agent?: string
 }
 
 // ─── Metadata store ──────────────────────────────────────────────────────────
@@ -172,7 +175,7 @@ async function readOneSession(
     lastModified: lastTimestampMs || fStat.mtimeMs,
     messageCount, gitBranch,
     title: m.title, description: m.description, tags: m.tags,
-    pinned: m.pinned, archived: m.archived,
+    pinned: m.pinned, archived: m.archived, agent: m.agent,
   }
 }
 
@@ -415,6 +418,7 @@ const HTML = `<!DOCTYPE html>
 
   .row-meta { font-size: 11px; color: #6e7681; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-meta .branch { color: #3fb950; }
+  .agent-badge { display: inline-block; padding: 0 5px; border-radius: 3px; background: #161b22; border: 1px solid #30363d; color: #e6af4b; font-size: 10px; font-family: 'SF Mono', 'Fira Code', monospace; vertical-align: middle; }
 
   .row-desc { font-size: 12px; color: #8b949e; font-style: italic; cursor: text; line-height: 1.4; }
   .row-desc:empty::before { content: attr(data-placeholder); color: #30363d; font-style: italic; }
@@ -444,8 +448,13 @@ const HTML = `<!DOCTYPE html>
   .toast.show { opacity: 1; transform: translateY(0); }
   .btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #30363d; background: transparent; color: #8b949e; font-size: 12px; cursor: pointer; }
   .btn:hover { border-color: #8b949e; color: #e6edf3; }
+  .new-wrap { position: relative; }
   .new-btn { padding: 6px 14px; border-radius: 6px; background: #1f6feb; border: 1px solid #388bfd; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
   .new-btn:hover { background: #388bfd; }
+  .new-menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); background: #161b22; border: 1px solid #30363d; border-radius: 6px; min-width: 150px; z-index: 200; overflow: hidden; }
+  .new-menu.open { display: block; }
+  .new-menu button { display: block; width: 100%; text-align: left; padding: 8px 14px; background: transparent; border: none; color: #e6edf3; font-size: 13px; cursor: pointer; }
+  .new-menu button:hover { background: #21262d; }
   .playground-btn { padding: 6px 14px; border-radius: 6px; background: transparent; border: 1px solid #6e40c9; color: #d2a8ff; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
   .playground-btn:hover { background: #6e40c911; border-color: #8957e5; }
 
@@ -484,7 +493,13 @@ const HTML = `<!DOCTYPE html>
   </div>
   <span id="count"></span>
   <button class="playground-btn" onclick="openPlayground()">⚡ Playground</button>
-  <button class="new-btn" onclick="newSession()">+ New</button>
+  <div class="new-wrap" id="new-wrap">
+    <button class="new-btn" onclick="toggleNewMenu()">+ New ▾</button>
+    <div class="new-menu" id="new-menu">
+      <button onclick="newSession('claude')">Claude Code</button>
+      <button onclick="newSession('codex')">Codex</button>
+    </div>
+  </div>
 </div>
 <div id="list"></div>
 <div class="toast" id="toast"></div>
@@ -585,7 +600,8 @@ function render() {
 
 function rowHtml(s) {
   const liveDot = s.activePty ? '<span class="live-dot" title="Session is running"></span>' : ''
-  const meta = [shortPath(s.cwd || s.project), s.gitBranch ? '<span class="branch">' + esc(s.gitBranch) + '</span>' : '', timeAgo(s.lastModified), s.messageCount + ' msgs'].filter(Boolean).join(' &middot; ')
+  const agentLabel = s.agent && s.agent !== 'claude' ? '<span class="agent-badge">' + esc(s.agent) + '</span>' : ''
+  const meta = [shortPath(s.cwd || s.project), s.gitBranch ? '<span class="branch">' + esc(s.gitBranch) + '</span>' : '', agentLabel, timeAgo(s.lastModified), s.messageCount + ' msgs'].filter(Boolean).join(' &middot; ')
   const tags = (s.tags||[]).map(t => '<button class="tag" data-tag="' + esc(t) + '">' + esc(t) + ' ×</button>').join('')
 
   let r = '<div class="row' + (s.pinned ? ' pinned' : '') + (s.archived ? ' archived' : '') + '" data-id="' + esc(s.id) + '">'
@@ -772,9 +788,16 @@ async function openPlayground() {
 }
 
 // ── new session ────────────────────────────────────────────────────────────
-function newSession() {
-  openTerminal(null, '${process.cwd()}', 'New session')
+function toggleNewMenu() {
+  document.getElementById('new-menu').classList.toggle('open')
 }
+function newSession(bin) {
+  document.getElementById('new-menu').classList.remove('open')
+  openTerminal(null, '${process.cwd()}', 'New session', { bin: bin || 'claude' })
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#new-wrap')) document.getElementById('new-menu').classList.remove('open')
+})
 
 // ── load ───────────────────────────────────────────────────────────────────
 async function refreshSessions() {
@@ -801,6 +824,9 @@ setInterval(() => {
 // Resolve claude binary once at startup (node-pty inherits a limited PATH)
 let claudeBin = 'claude'
 try { claudeBin = execSync('which claude', { encoding: 'utf8' }).trim() } catch {}
+let codexBin = 'codex'
+try { codexBin = execSync('which codex', { encoding: 'utf8' }).trim() } catch {}
+const AGENT_BINS: Record<string, string> = { claude: claudeBin, codex: codexBin }
 
 // ── Active PTY registry ────────────────────────────────────────────────────
 interface ActivePty {
@@ -841,9 +867,12 @@ if (nodePty) {
     }
 
     // ── Spawn new PTY ──────────────────────────────────────────────────────
-    const args = sessionId.startsWith('anon-') ? [] : ['--resume', sessionId]
+    const binKey = url.searchParams.get('bin') || 'claude'
+    const activeBin = AGENT_BINS[binKey] ?? claudeBin
+    // Only claude supports --resume; other agents always start fresh
+    const args = (binKey === 'claude' && !sessionId.startsWith('anon-')) ? ['--resume', sessionId] : []
     const shell = process.env.SHELL || '/bin/zsh'
-    const cmdStr = [claudeBin, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
+    const cmdStr = [activeBin, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
 
     let pty: any
     try {
@@ -860,6 +889,19 @@ if (nodePty) {
         ws.close()
       }
       return
+    }
+
+    // Tag the new session with the agent once its JSONL file appears
+    if (binKey !== 'claude') {
+      const projectDir = join(homedir(), '.claude', 'projects', cwd.replace(/\//g, '-'))
+      const watcher = watch(projectDir, async (eventType, filename) => {
+        if (eventType === 'rename' && filename?.endsWith('.jsonl')) {
+          const newId = filename.replace('.jsonl', '')
+          await updateSessionMeta(newId, { agent: binKey })
+          watcher.close()
+        }
+      })
+      setTimeout(() => watcher.close(), 5 * 60 * 1000) // give up after 5 min
     }
 
     const active: ActivePty = { pty, cwd, ws, buffer: '' }
