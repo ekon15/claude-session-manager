@@ -586,7 +586,13 @@ const HTML = `<!DOCTYPE html>
     <button class="pill arch" data-filter="archived" onclick="setFilter('archived',this)">Archived</button>
   </div>
   <span id="count"></span>
-  <button class="playground-btn" onclick="openPlayground()">⚡ Playground</button>
+  <div class="new-wrap" id="pg-wrap">
+    <button class="playground-btn" onclick="togglePgMenu()">⚡ Playground ▾</button>
+    <div class="new-menu" id="pg-menu">
+      <button onclick="openPlayground('claude')">Claude Code</button>
+      <button onclick="openPlayground('codex')">Codex</button>
+    </div>
+  </div>
   <div class="new-wrap" id="new-wrap">
     <button class="new-btn" onclick="toggleNewMenu()">+ New ▾</button>
     <div class="new-menu" id="new-menu">
@@ -876,10 +882,17 @@ document.getElementById('list').addEventListener('click', async e => {
 })
 
 // ── playground ────────────────────────────────────────────────────────────
-async function openPlayground() {
-  const { startedAt, cwd } = await api('POST', '/api/playground', {})
-  openTerminal(null, cwd, '⚡ Playground', { playground: 'true', after: String(startedAt) })
+function togglePgMenu() {
+  document.getElementById('pg-menu').classList.toggle('open')
 }
+async function openPlayground(bin) {
+  document.getElementById('pg-menu').classList.remove('open')
+  const { startedAt, cwd } = await api('POST', '/api/playground', {})
+  openTerminal(null, cwd, '⚡ Playground', { playground: 'true', after: String(startedAt), bin: bin || 'claude' })
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#pg-wrap')) document.getElementById('pg-menu').classList.remove('open')
+})
 
 // ── new session ────────────────────────────────────────────────────────────
 function toggleNewMenu() {
