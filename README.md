@@ -34,7 +34,8 @@ Opens automatically at http://localhost:7367.
 | Action | How |
 |--------|-----|
 | Resume a session | Click **Resume** on any card |
-| Start a new session | Click **+ New** |
+| Start a new session | Click **+ New** — opens a fresh Claude session in the browser terminal |
+| Quick scratch session | Click **⚡ Playground** — same as New, but auto-tags and archives the session when you exit, keeping your list clean |
 | Add/edit a note | Click the note area below the session title |
 | Edit the title | Click the title text |
 | Add a tag | Click **+ tag** |
