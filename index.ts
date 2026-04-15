@@ -6,7 +6,6 @@
 
 import { createServer } from 'http'
 import { readdir, readFile, stat, writeFile, mkdir } from 'fs/promises'
-import { watch } from 'fs'
 import { join, basename } from 'path'
 import { homedir, tmpdir } from 'os'
 import { execSync, exec } from 'child_process'
@@ -175,8 +174,95 @@ async function readOneSession(
     lastModified: lastTimestampMs || fStat.mtimeMs,
     messageCount, gitBranch,
     title: m.title, description: m.description, tags: m.tags,
-    pinned: m.pinned, archived: m.archived, agent: m.agent,
+    pinned: m.pinned, archived: m.archived, agent: m.agent ?? 'claude',
   }
+}
+
+async function readCodexSessions(meta: MetaStore): Promise<Session[]> {
+  const codexBase = join(homedir(), '.codex', 'sessions')
+  const filePromises: Promise<Session | null>[] = []
+
+  const years = await readdir(codexBase).catch(() => [] as string[])
+  for (const year of years) {
+    const yearDir = join(codexBase, year)
+    const months = await readdir(yearDir).catch(() => [] as string[])
+    for (const month of months) {
+      const monthDir = join(yearDir, month)
+      const days = await readdir(monthDir).catch(() => [] as string[])
+      for (const day of days) {
+        const dayDir = join(monthDir, day)
+        const files = (await readdir(dayDir).catch(() => [] as string[])).filter(f => f.endsWith('.jsonl'))
+        for (const file of files) {
+          filePromises.push((async (): Promise<Session | null> => {
+            const filePath = join(dayDir, file)
+            const fStat = await stat(filePath).catch(() => null)
+            if (!fStat) return null
+
+            let sessionId = basename(file, '.jsonl')
+            let cwd = ''
+            let gitBranch = ''
+            let firstMessage = ''
+            let lastMessage = ''
+            let messageCount = 0
+            let lastTimestampMs = 0
+
+            try {
+              const lines = (await readFile(filePath, 'utf-8')).split('\n').filter(l => l.trim())
+              for (const line of lines) {
+                try {
+                  const obj = JSON.parse(line)
+                  if (obj.timestamp) {
+                    const ts = new Date(obj.timestamp).getTime()
+                    if (ts > lastTimestampMs) lastTimestampMs = ts
+                  }
+                  if (obj.type === 'session_meta') {
+                    if (obj.payload?.id) sessionId = obj.payload.id
+                    if (obj.payload?.cwd) cwd = obj.payload.cwd
+                    if (obj.payload?.git?.branch) gitBranch = obj.payload.git.branch
+                  }
+                  if (obj.type === 'response_item') {
+                    const role = obj.payload?.role
+                    const content: any[] = obj.payload?.content ?? []
+                    if (role === 'user' || role === 'assistant') messageCount++
+                    if (role === 'user') {
+                      for (const c of content) {
+                        if (c.type === 'input_text') {
+                          const text = (c.text ?? '').trim()
+                          // Skip XML-wrapped context injected by Codex
+                          if (text && !text.startsWith('<')) {
+                            const snippet = text.slice(0, 300)
+                            if (!firstMessage) firstMessage = snippet
+                            lastMessage = snippet
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch {}
+              }
+            } catch {
+              return null
+            }
+
+            if (meta.sessions[sessionId]?.deletedAt) return null
+            if (!cwd && !firstMessage) return null
+
+            const m = meta.sessions[sessionId] ?? {}
+            return {
+              id: sessionId, project: 'codex', cwd, firstMessage: firstMessage || 'Codex session',
+              lastMessage, lastModified: lastTimestampMs || fStat.mtimeMs,
+              messageCount, gitBranch,
+              title: m.title, description: m.description, tags: m.tags,
+              pinned: m.pinned, archived: m.archived, agent: 'codex',
+            }
+          })())
+        }
+      }
+    }
+  }
+
+  const results = await Promise.all(filePromises)
+  return results.filter((s): s is Session => s !== null)
 }
 
 async function readSessions(): Promise<Session[]> {
@@ -198,8 +284,14 @@ async function readSessions(): Promise<Session[]> {
     }
   }
 
-  const results = await Promise.all(filePromises)
-  const sessions = results.filter((s): s is Session => s !== null)
+  const [claudeResults, codexSessions] = await Promise.all([
+    Promise.all(filePromises),
+    readCodexSessions(meta),
+  ])
+  const sessions = [
+    ...claudeResults.filter((s): s is Session => s !== null),
+    ...codexSessions,
+  ]
 
   return sessions.sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
@@ -418,7 +510,9 @@ const HTML = `<!DOCTYPE html>
 
   .row-meta { font-size: 11px; color: #6e7681; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-meta .branch { color: #3fb950; }
-  .agent-badge { display: inline-block; padding: 0 5px; border-radius: 3px; background: #161b22; border: 1px solid #30363d; color: #e6af4b; font-size: 10px; font-family: 'SF Mono', 'Fira Code', monospace; vertical-align: middle; }
+  .agent-badge { display: inline-block; padding: 0 5px; border-radius: 3px; background: #161b22; border: 1px solid #30363d; font-size: 10px; font-family: 'SF Mono', 'Fira Code', monospace; vertical-align: middle; }
+  .agent-claude { color: #e6af4b; border-color: #e6af4b44; }
+  .agent-codex { color: #79c0ff; border-color: #79c0ff44; }
 
   .row-desc { font-size: 12px; color: #8b949e; font-style: italic; cursor: text; line-height: 1.4; }
   .row-desc:empty::before { content: attr(data-placeholder); color: #30363d; font-style: italic; }
@@ -600,7 +694,7 @@ function render() {
 
 function rowHtml(s) {
   const liveDot = s.activePty ? '<span class="live-dot" title="Session is running"></span>' : ''
-  const agentLabel = s.agent && s.agent !== 'claude' ? '<span class="agent-badge">' + esc(s.agent) + '</span>' : ''
+  const agentLabel = s.agent ? '<span class="agent-badge agent-' + esc(s.agent) + '">' + esc(s.agent) + '</span>' : ''
   const meta = [shortPath(s.cwd || s.project), s.gitBranch ? '<span class="branch">' + esc(s.gitBranch) + '</span>' : '', agentLabel, timeAgo(s.lastModified), s.messageCount + ' msgs'].filter(Boolean).join(' &middot; ')
   const tags = (s.tags||[]).map(t => '<button class="tag" data-tag="' + esc(t) + '">' + esc(t) + ' ×</button>').join('')
 
@@ -709,7 +803,7 @@ async function doResume(id, btn) {
     finally { btn.classList.remove('loading'); btn.textContent = 'Resume' }
     return
   }
-  openTerminal(s.id, s.cwd, s.title || s.firstMessage || '')
+  openTerminal(s.id, s.cwd, s.title || s.firstMessage || '', s.agent ? { bin: s.agent } : {})
 }
 async function doPin(id) {
   await api('POST', '/api/pin/' + id)
@@ -869,8 +963,10 @@ if (nodePty) {
     // ── Spawn new PTY ──────────────────────────────────────────────────────
     const binKey = url.searchParams.get('bin') || 'claude'
     const activeBin = AGENT_BINS[binKey] ?? claudeBin
-    // Only claude supports --resume; other agents always start fresh
-    const args = (binKey === 'claude' && !sessionId.startsWith('anon-')) ? ['--resume', sessionId] : []
+    const isNew = sessionId.startsWith('anon-')
+    const args = isNew ? [] :
+      binKey === 'claude' ? ['--resume', sessionId] :
+      binKey === 'codex'  ? ['resume', sessionId] : []
     const shell = process.env.SHELL || '/bin/zsh'
     const cmdStr = [activeBin, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
 
@@ -891,18 +987,7 @@ if (nodePty) {
       return
     }
 
-    // Tag the new session with the agent once its JSONL file appears
-    if (binKey !== 'claude') {
-      const projectDir = join(homedir(), '.claude', 'projects', cwd.replace(/\//g, '-'))
-      const watcher = watch(projectDir, async (eventType, filename) => {
-        if (eventType === 'rename' && filename?.endsWith('.jsonl')) {
-          const newId = filename.replace('.jsonl', '')
-          await updateSessionMeta(newId, { agent: binKey })
-          watcher.close()
-        }
-      })
-      setTimeout(() => watcher.close(), 5 * 60 * 1000) // give up after 5 min
-    }
+
 
     const active: ActivePty = { pty, cwd, ws, buffer: '' }
     activePtys.set(sessionId, active)
