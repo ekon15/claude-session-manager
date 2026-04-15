@@ -2,8 +2,6 @@
 
 A local web UI for browsing, resuming, and managing Claude Code sessions.
 
-![screenshot placeholder]
-
 ## What it does
 
 - Lists all sessions from `~/.claude/projects/` sorted by most recent
