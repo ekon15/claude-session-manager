@@ -716,6 +716,7 @@ function doCopy(id) {
 async function saveField(id, field, value) {
   await api('PUT', '/api/meta/' + id, { [field]: value })
   patchLocal(id, { [field]: value || undefined })
+  render()
 }
 async function doAddTag(id) {
   const val = prompt('Tag:'); if (!val) return
