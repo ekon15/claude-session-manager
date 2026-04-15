@@ -82,18 +82,18 @@ async function updateSessionMeta(id: string, patch: Partial<SessionMeta>): Promi
 }
 
 async function tagPlaygroundSessions(after: number, cwd: string): Promise<number> {
+  let tagged = 0
+
+  // Claude sessions
   const projectsDir = join(homedir(), '.claude', 'projects')
   const projects = await readdir(projectsDir).catch(() => [] as string[])
-  let tagged = 0
   for (const project of projects) {
     const files = await readdir(join(projectsDir, project)).catch(() => [] as string[])
     for (const file of files.filter(f => f.endsWith('.jsonl'))) {
       const filePath = join(projectsDir, project, file)
       const s = await stat(filePath).catch(() => null)
-      if (!s) continue
-      if (s.birthtimeMs <= after) continue  // only sessions CREATED after playground started
-      const fileCwd = await getFirstCwd(filePath)
-      if (fileCwd !== cwd) continue
+      if (!s || s.birthtimeMs <= after) continue
+      if (await getFirstCwd(filePath) !== cwd) continue
       const id = basename(file, '.jsonl')
       const existing = (await readMeta()).sessions[id] ?? {}
       const tags = [...new Set([...(existing.tags ?? []), 'playground'])]
@@ -101,6 +101,35 @@ async function tagPlaygroundSessions(after: number, cwd: string): Promise<number
       tagged++
     }
   }
+
+  // Codex sessions
+  const codexBase = join(homedir(), '.codex', 'sessions')
+  for (const year of await readdir(codexBase).catch(() => [] as string[])) {
+    for (const month of await readdir(join(codexBase, year)).catch(() => [] as string[])) {
+      for (const day of await readdir(join(codexBase, year, month)).catch(() => [] as string[])) {
+        const dayDir = join(codexBase, year, month, day)
+        const files = (await readdir(dayDir).catch(() => [] as string[])).filter(f => f.endsWith('.jsonl'))
+        for (const file of files) {
+          const filePath = join(dayDir, file)
+          const s = await stat(filePath).catch(() => null)
+          if (!s || s.birthtimeMs <= after) continue
+          if (await getFirstCwd(filePath) !== cwd) continue
+          let id = basename(file, '.jsonl')
+          try {
+            for (const line of (await readFile(filePath, 'utf-8')).split('\n').slice(0, 5)) {
+              const o = JSON.parse(line)
+              if (o.type === 'session_meta' && o.payload?.id) { id = o.payload.id; break }
+            }
+          } catch {}
+          const existing = (await readMeta()).sessions[id] ?? {}
+          const tags = [...new Set([...(existing.tags ?? []), 'playground'])]
+          await updateSessionMeta(id, { tags, archived: true })
+          tagged++
+        }
+      }
+    }
+  }
+
   return tagged
 }
 
@@ -304,7 +333,7 @@ async function readSessions(): Promise<Session[]> {
 async function getFirstCwd(filePath: string): Promise<string> {
   try {
     for (const line of (await readFile(filePath, 'utf-8')).split('\n').slice(0, 20)) {
-      try { const o = JSON.parse(line); if (o.cwd) return o.cwd } catch {}
+      try { const o = JSON.parse(line); if (o.cwd) return o.cwd; if (o.payload?.cwd) return o.payload.cwd } catch {}
     }
   } catch {}
   return ''
