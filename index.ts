@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Claude Code Session Manager
+ * Coding Agent Session Manager
  * Usage: tsx scripts/session-ui.ts [--port 7367]
  */
 
@@ -483,7 +483,7 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Code Sessions</title>
+<title>Coding Agent Sessions</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5/css/xterm.css">
 <style>
@@ -596,7 +596,7 @@ const HTML = `<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <h1>Claude Code Sessions</h1>
+  <h1>Coding Agent Sessions</h1>
   <span id="last-refresh">Loading...</span>
   <div class="header-right">
     <button class="btn" onclick="refreshSessions()">Refresh</button>
@@ -1075,7 +1075,7 @@ if (nodePty) {
 }
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Claude Code Session Manager → http://localhost:${PORT}`)
+  console.log(`Coding Agent Session Manager → http://localhost:${PORT}`)
   exec(`open http://localhost:${PORT}`)
 })
 
