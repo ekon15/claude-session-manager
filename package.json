@@ -1,7 +1,7 @@
 {
   "name": "claude-session-manager",
   "version": "1.0.0",
-  "description": "Local web UI for browsing, resuming, and managing Claude Code sessions",
+  "description": "Local web UI for browsing, resuming, and managing coding agent sessions (Claude Code and Codex)",
   "type": "module",
   "scripts": {
     "start": "tsx index.ts",
