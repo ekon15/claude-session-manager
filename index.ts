@@ -688,6 +688,7 @@ function filtered() {
   return allSessions.filter(s => {
     if (activeFilter === 'archived') return !!s.archived
     if (s.archived) return false
+    if (s.pinned) return true  // pinned sessions always visible regardless of filter
     if (activeFilter === 'today' && now - s.lastModified > DAY) return false
     if (activeFilter === 'week' && now - s.lastModified > 7 * DAY) return false
     if (activeFilter === 'active' && now - s.lastModified > 7 * DAY) return false
