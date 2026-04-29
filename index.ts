@@ -6,6 +6,7 @@
 
 import { createServer } from 'http'
 import { readdir, readFile, stat, writeFile, mkdir } from 'fs/promises'
+import { watch as fsWatch } from 'fs'
 import { join, basename } from 'path'
 import { homedir, tmpdir } from 'os'
 import { execSync, exec } from 'child_process'
@@ -1082,13 +1083,13 @@ if (nodePty) {
     activePtys.set(sessionId, active)
 
     // For new Claude sessions: watch for the new session file and send its ID back to the client
-    let sessionWatcher: ReturnType<typeof fs.watch> | null = null
+    let sessionWatcher: ReturnType<typeof fsWatch> | null = null
     if (isNew && binKey === 'claude') {
-      const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects')
+      const claudeProjectsDir = join(homedir(), '.claude', 'projects')
       try {
-        sessionWatcher = fs.watch(claudeProjectsDir, { recursive: true }, (_evt, filename) => {
+        sessionWatcher = fsWatch(claudeProjectsDir, { recursive: true }, (_evt, filename) => {
           if (filename && filename.endsWith('.jsonl')) {
-            const newId = path.basename(filename, '.jsonl')
+            const newId = basename(filename, '.jsonl')
             if (newId.length === 36) {
               try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'session_id', id: newId })) } catch {}
               sessionWatcher?.close(); sessionWatcher = null
