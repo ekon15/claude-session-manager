@@ -763,7 +763,7 @@ function sessionById(id) { return allSessions.find(s => s.id === id) }
 function patchLocal(id, patch) { const s = sessionById(id); if (s) Object.assign(s, patch) }
 
 
-let _term = null, _termWs = null, _termFit = null, _termResize = null, _termId = null
+let _term = null, _termWs = null, _termFit = null, _termResize = null, _termId = null, _pendingTitle = null
 
 function openTerminal(id, cwd, title, extra = {}) {
   // Clean up any previous terminal
@@ -798,7 +798,24 @@ function openTerminal(id, cwd, title, extra = {}) {
     fitAddon.fit()
     ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
   }
-  ws.onmessage = e => term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data))
+  ws.onmessage = e => {
+    if (typeof e.data === 'string' && e.data[0] === '{') {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'session_id') {
+          _termId = msg.id
+          if (_pendingTitle) {
+            api('PUT', '/api/meta/' + _termId, { title: _pendingTitle })
+            patchLocal(_termId, { title: _pendingTitle })
+            _pendingTitle = null
+            render()
+          }
+          return
+        }
+      } catch {}
+    }
+    term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data))
+  }
   ws.onclose = () => { /* server sends exit message before closing */ }
   ws.onerror = () => term.write('\\r\\n\\x1b[31m[connection error — is node-pty installed?]\\x1b[0m\\r\\n')
 
@@ -817,7 +834,6 @@ function openTerminal(id, cwd, title, extra = {}) {
 }
 
 function editTermTitle() {
-  if (!_termId) return
   const el = document.getElementById('term-title')
   if (el.contentEditable === 'true') return
   el.contentEditable = 'true'; el.focus()
@@ -826,9 +842,13 @@ function editTermTitle() {
   function finish() {
     el.contentEditable = 'false'
     const val = el.textContent.trim()
-    api('PUT', '/api/meta/' + _termId, { title: val })
-    patchLocal(_termId, { title: val || undefined })
-    render()
+    if (_termId) {
+      api('PUT', '/api/meta/' + _termId, { title: val })
+      patchLocal(_termId, { title: val || undefined })
+      render()
+    } else {
+      _pendingTitle = val || null
+    }
   }
   el.addEventListener('blur', finish, { once: true })
   el.addEventListener('keydown', e => {
@@ -847,7 +867,7 @@ function closeTerminal() {
   // Close WS (server detaches, PTY keeps running) then dispose local terminal
   if (_termWs) { try { _termWs.close() } catch {} _termWs = null }
   if (_term) { _term.dispose(); _term = null }
-  _termFit = null; _termId = null
+  _termFit = null; _termId = null; _pendingTitle = null
   document.getElementById('term-overlay').classList.remove('open')
   window.scrollTo({ top: 0, behavior: 'smooth' })
   // Refresh now (clears live dot) and again shortly after (picks up playground tag)
@@ -1061,6 +1081,24 @@ if (nodePty) {
     const active: ActivePty = { pty, cwd, ws, buffer: '' }
     activePtys.set(sessionId, active)
 
+    // For new Claude sessions: watch for the new session file and send its ID back to the client
+    let sessionWatcher: ReturnType<typeof fs.watch> | null = null
+    if (isNew && binKey === 'claude') {
+      const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects')
+      try {
+        sessionWatcher = fs.watch(claudeProjectsDir, { recursive: true }, (_evt, filename) => {
+          if (filename && filename.endsWith('.jsonl')) {
+            const newId = path.basename(filename, '.jsonl')
+            if (newId.length === 36) {
+              try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'session_id', id: newId })) } catch {}
+              sessionWatcher?.close(); sessionWatcher = null
+            }
+          }
+        })
+        setTimeout(() => { sessionWatcher?.close(); sessionWatcher = null }, 120000)
+      } catch {}
+    }
+
     pty.onData((data: string) => {
       active.buffer = (active.buffer + data).slice(-102400) // keep ~100 KB
       if (active.ws?.readyState === WebSocket.OPEN) active.ws.send(data)
@@ -1077,6 +1115,7 @@ if (nodePty) {
 
     ws.on('close', () => {
       active.ws = null
+      sessionWatcher?.close(); sessionWatcher = null
       // For playground: tag+archive as soon as the user closes the panel
       if (isPlayground && playgroundAfter) {
         tagPlaygroundSessions(playgroundAfter, cwd).catch(() => {})
@@ -1084,6 +1123,7 @@ if (nodePty) {
     })
 
     pty.onExit(({ exitCode }: { exitCode: number }) => {
+      sessionWatcher?.close(); sessionWatcher = null
       const msg = `\r\n\x1b[90m[session ended: exit ${exitCode}]\x1b[0m\r\n`
       active.buffer += msg
       if (active.ws?.readyState === WebSocket.OPEN) {
