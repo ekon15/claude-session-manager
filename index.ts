@@ -588,7 +588,10 @@ const HTML = `<!DOCTYPE html>
   .term-close { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: transparent; border: 1px solid #30363d; color: #8b949e; font-size: 12px; cursor: pointer; }
   .term-close:hover { border-color: #8b949e; color: #e6edf3; }
   .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3fb950; margin-right: 5px; box-shadow: 0 0 4px #3fb95088; flex-shrink: 0; }
-  .term-topbar-title { font-size: 13px; color: #8b949e; flex: 1; text-align: center; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .term-topbar-title { font-size: 13px; color: #8b949e; flex: 1; text-align: center; font-family: 'SF Mono', 'Fira Code', monospace; cursor: text; border-radius: 4px; padding: 2px 6px; outline: none; }
+  .term-topbar-title:empty::before { content: attr(data-placeholder); color: #484f58; }
+  .term-topbar-title[contenteditable="true"] { background: #0d1117; border: 1px solid #388bfd; color: #e6edf3; }
+  .term-topbar-title:not([contenteditable="true"]):hover { background: #21262d; }
   .term-body { flex: 1; overflow: hidden; padding: 8px 8px 8px 8px; }
   .term-body .xterm { height: 100%; }
 
@@ -636,7 +639,7 @@ const HTML = `<!DOCTYPE html>
 <div class="term-overlay" id="term-overlay">
   <div class="term-topbar">
     <button class="term-close" onclick="closeTerminal()">✕ Close</button>
-    <span class="term-topbar-title" id="term-title"></span>
+    <div class="term-topbar-title" id="term-title" contenteditable="false" data-placeholder="New session" onclick="editTermTitle()"></div>
   </div>
   <div class="term-body" id="term-body"></div>
 </div>
@@ -760,13 +763,15 @@ function sessionById(id) { return allSessions.find(s => s.id === id) }
 function patchLocal(id, patch) { const s = sessionById(id); if (s) Object.assign(s, patch) }
 
 
-let _term = null, _termWs = null, _termFit = null, _termResize = null
+let _term = null, _termWs = null, _termFit = null, _termResize = null, _termId = null
 
 function openTerminal(id, cwd, title, extra = {}) {
   // Clean up any previous terminal
   closeTerminal()
 
-  document.getElementById('term-title').textContent = title || (id ? id.slice(0, 8) : 'New session')
+  _termId = id || null
+  const titleEl = document.getElementById('term-title')
+  titleEl.textContent = title || (id ? id.slice(0, 8) : '')
   document.getElementById('term-overlay').classList.add('open')
 
   const term = new Terminal({
@@ -811,6 +816,27 @@ function openTerminal(id, cwd, title, extra = {}) {
   term.focus()
 }
 
+function editTermTitle() {
+  if (!_termId) return
+  const el = document.getElementById('term-title')
+  if (el.contentEditable === 'true') return
+  el.contentEditable = 'true'; el.focus()
+  const range = document.createRange(); range.selectNodeContents(el); range.collapse(false)
+  window.getSelection().removeAllRanges(); window.getSelection().addRange(range)
+  function finish() {
+    el.contentEditable = 'false'
+    const val = el.textContent.trim()
+    api('PUT', '/api/meta/' + _termId, { title: val })
+    patchLocal(_termId, { title: val || undefined })
+    render()
+  }
+  el.addEventListener('blur', finish, { once: true })
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); el.blur() }
+    if (e.key === 'Escape') { el.contentEditable = 'false'; el.removeEventListener('blur', finish) }
+  }, { once: true })
+}
+
 function _escHandler(e) {
   if (e.key === 'Escape' && e.target.tagName !== 'INPUT') { closeTerminal() }
 }
@@ -821,7 +847,7 @@ function closeTerminal() {
   // Close WS (server detaches, PTY keeps running) then dispose local terminal
   if (_termWs) { try { _termWs.close() } catch {} _termWs = null }
   if (_term) { _term.dispose(); _term = null }
-  _termFit = null
+  _termFit = null; _termId = null
   document.getElementById('term-overlay').classList.remove('open')
   window.scrollTo({ top: 0, behavior: 'smooth' })
   // Refresh now (clears live dot) and again shortly after (picks up playground tag)
